@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WAV + PNG 合成 MP4</title>
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+</head>
+<body>
+  <h2>WAV + PNG 合成 MP4</h2>
+  <input type="file" id="wavFile" accept="audio/wav"><br><br>
+  <input type="file" id="pngFile" accept="image/png"><br><br>
+  <button onclick="convert()">合成 MP4</button><br><br>
+  <div id="status" style="margin-bottom:10px; color:blue;"></div>
+  <progress id="progressBar" value="0" max="100" style="width:300px; display:none;"></progress><br><br>
+  <a id="downloadLink" style="display:none">下載 MP4</a>
+
+  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({
+      log: true,
+      progress: ({ ratio }) => {
+        const progressBar = document.getElementById('progressBar');
+        const status = document.getElementById('status');
+        progressBar.style.display = 'block';
+        progressBar.value = Math.round(ratio * 100);
+        status.textContent = `轉換中... ${Math.round(ratio * 100)}%`;
+      }
+    });
+
+    let ffmpegLoaded = false;
+
+    async function convert() {
+      const wavInput = document.getElementById('wavFile').files[0];
+      const pngInput = document.getElementById('pngFile').files[0];
+      const status = document.getElementById('status');
+      const progressBar = document.getElementById('progressBar');
+      const downloadLink = document.getElementById('downloadLink');
+
+      if (!wavInput || !pngInput) {
+        alert('請選擇 WAV 和 PNG 檔案');
+        return;
+      }
+
+      try {
+        status.textContent = '初始化中，請稍候...';
+        progressBar.style.display = 'none';
+        downloadLink.style.display = 'none';
+
+        if (!ffmpegLoaded) {
+          await ffmpeg.load();
+          ffmpegLoaded = true;
+        }
+
+        status.textContent = '正在處理檔案...';
+        ffmpeg.FS('writeFile', 'audio.wav', await fetchFile(wavInput));
+        ffmpeg.FS('writeFile', 'image.png', await fetchFile(pngInput));
+
+        status.textContent = '開始轉檔...';
+        await ffmpeg.run(
+          '-loop', '1',
+          '-i', 'image.png',
+          '-i', 'audio.wav',
+          '-c:v', 'libx264',
+          '-tune', 'stillimage',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-pix_fmt', 'yuv420p',
+          '-shortest',
+          'output.mp4'
+        );
+
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+        const videoBlob = new Blob([data.buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(videoBlob);
+        
+        downloadLink.href = url;
+        downloadLink.download = 'output.mp4';
+        downloadLink.textContent = '下載 MP4';
+        downloadLink.style.display = 'block';
+
+        status.textContent = '轉換完成！';
+        progressBar.style.display = 'none';
+      } catch (err) {
+        status.textContent = '發生錯誤，請重試或查看開發者主控台';
+        progressBar.style.display = 'none';
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+</html>
